@@ -75,17 +75,101 @@
         </div>
     </div>
 
-    <script>
-        // We will add the AES-GCM Web Crypto decryption logic here in the next step!
+ <script>
         async function attemptDecryption() {
             const keyword = document.getElementById('keyword').value.trim().toLowerCase();
             const errorMessage = document.getElementById('error-message');
+            const resultContainer = document.getElementById('result-container');
+            const destImage = document.getElementById('destination-image');
             
-            // Placeholder to verify the button works
-            console.log("Attempting decryption with:", keyword);
-            errorMessage.style.display = "block"; 
+            errorMessage.style.display = "none";
+            resultContainer.style.display = "none";
+
+            if (!keyword) return;
+
+            try {
+                // Fetch the treasure map data
+                const response = await fetch('encrypted_data.json');
+                if (!response.ok) throw new Error("Network error fetching data.");
+                const data = await response.json();
+
+                const decodeBase64 = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                
+                const masterIv = decodeBase64(data.master_iv);
+                const ciphertext = decodeBase64(data.ciphertext);
+
+                // 1. Turn the user's input into raw key material
+                const enc = new TextEncoder();
+                const keyMaterial = await crypto.subtle.importKey(
+                    "raw",
+                    enc.encode(keyword),
+                    "PBKDF2",
+                    false,
+                    ["deriveKey"]
+                );
+
+                let masterKeyBuffer = null;
+
+                // 2. Try the user's password on every "lockbox"
+                for (const box of data.lockboxes) {
+                    const salt = decodeBase64(box.salt);
+                    const iv = decodeBase64(box.iv);
+                    const wrappedKey = decodeBase64(box.wrapped_key);
+
+                    try {
+                        // Derive a test key assuming this box belongs to the user
+                        const testKey = await crypto.subtle.deriveKey(
+                            { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+                            keyMaterial,
+                            { name: "AES-GCM", length: 256 },
+                            false,
+                            ["decrypt"]
+                        );
+
+                        // Try to unlock this specific box to get the Master Key
+                        masterKeyBuffer = await crypto.subtle.decrypt(
+                            { name: "AES-GCM", iv: iv },
+                            testKey,
+                            wrappedKey
+                        );
+
+                        // If we didn't get an error, the box opened! Stop checking other boxes.
+                        break; 
+                    } catch (e) {
+                        // Wrong password for this box. Silently ignore and loop to the next one.
+                        continue;
+                    }
+                }
+
+                // If the loop finished and masterKeyBuffer is still null, none of the boxes opened.
+                if (!masterKeyBuffer) {
+                    throw new Error("Incorrect password for all teams.");
+                }
+
+                // 3. We successfully extracted the Master Key! Prepare it for use.
+                const masterKey = await crypto.subtle.importKey(
+                    "raw",
+                    masterKeyBuffer,
+                    "AES-GCM",
+                    false,
+                    ["decrypt"]
+                );
+
+                // 4. Decrypt the actual image using the Master Key
+                const decryptedBuffer = await crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: masterIv },
+                    masterKey,
+                    ciphertext
+                );
+
+                // 5. Display the image
+                const blob = new Blob([decryptedBuffer], { type: data.mime_type });
+                destImage.src = URL.createObjectURL(blob);
+                resultContainer.style.display = "block";
+
+            } catch (error) {
+                console.error("Decryption failed:", error);
+                errorMessage.style.display = "block";
+            }
         }
     </script>
-
-</body>
-</html>
