@@ -47,7 +47,7 @@
         }
         #result-container {
             margin-top: 2rem;
-            display: none; /* Hidden until the key is correct */
+            display: none; 
         }
         img {
             max-width: 100%;
@@ -65,7 +65,6 @@
     <div class="container">
         <h2>Enter the Secret Word</h2>
         
-        <!-- The Garbled Image Canvas -->
         <canvas id="garbled-canvas" width="300" height="200" style="margin: 1rem auto; border-radius: 4px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); max-width: 100%; display: block;"></canvas>
         <p id="loading-text" style="font-size: 14px; color: #888; margin-bottom: 1rem;">Receiving encrypted signal...</p>
         
@@ -82,12 +81,102 @@
 
     <script>
         async function attemptDecryption() {
-            (async function paintStatic() {
+            const keyword = document.getElementById('keyword').value.trim().toLowerCase();
+            const errorMessage = document.getElementById('error-message');
+            const resultContainer = document.getElementById('result-container');
+            const destImage = document.getElementById('destination-image');
+            
+            errorMessage.style.display = "none";
+            resultContainer.style.display = "none";
+
+            if (!keyword) return;
+
+            try {
+                const response = await fetch('encrypted_data.json');
+                if (!response.ok) throw new Error("Network error fetching data.");
+                const data = await response.json();
+
+                const decodeBase64 = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                
+                const masterIv = decodeBase64(data.master_iv);
+                const ciphertext = decodeBase64(data.ciphertext);
+
+                const enc = new TextEncoder();
+                const keyMaterial = await crypto.subtle.importKey(
+                    "raw",
+                    enc.encode(keyword),
+                    "PBKDF2",
+                    false,
+                    ["deriveKey"]
+                );
+
+                let masterKeyBuffer = null;
+
+                for (const box of data.lockboxes) {
+                    const salt = decodeBase64(box.salt);
+                    const iv = decodeBase64(box.iv);
+                    const wrappedKey = decodeBase64(box.wrapped_key);
+
+                    try {
+                        const testKey = await crypto.subtle.deriveKey(
+                            { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+                            keyMaterial,
+                            { name: "AES-GCM", length: 256 },
+                            false,
+                            ["decrypt"]
+                        );
+
+                        masterKeyBuffer = await crypto.subtle.decrypt(
+                            { name: "AES-GCM", iv: iv },
+                            testKey,
+                            wrappedKey
+                        );
+                        break; 
+                    } catch (e) {
+                        continue;
+                    }
+                }
+
+                if (!masterKeyBuffer) {
+                    throw new Error("Incorrect password for all teams.");
+                }
+
+                const masterKey = await crypto.subtle.importKey(
+                    "raw",
+                    masterKeyBuffer,
+                    "AES-GCM",
+                    false,
+                    ["decrypt"]
+                );
+
+                const decryptedBuffer = await crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: masterIv },
+                    masterKey,
+                    ciphertext
+                );
+
+                const blob = new Blob([decryptedBuffer], { type: data.mime_type });
+                destImage.src = URL.createObjectURL(blob);
+                resultContainer.style.display = "block";
+
+                // Hide the garbled canvas and loading text on success
+                const canvas = document.getElementById('garbled-canvas');
+                if (canvas) canvas.style.display = 'none';
+                const loadText = document.getElementById('loading-text');
+                if (loadText) loadText.style.display = 'none';
+
+            } catch (error) {
+                console.error("Decryption failed:", error);
+                errorMessage.innerText = "Incorrect keyword or missing data. Keep hunting!";
+                errorMessage.style.display = "block";
+            }
+        }
+
+        // Safe loader for the static noise
+        window.addEventListener('load', async () => {
             const canvas = document.getElementById('garbled-canvas');
-            if (!canvas) return; 
-            const ctx = canvas.getContext('2d');
-            const imgData = ctx.createImageData(canvas.width, canvas.height);
             const loadText = document.getElementById('loading-text');
+            if (!canvas || !loadText) return;
 
             try {
                 const response = await fetch('encrypted_data.json');
@@ -96,18 +185,19 @@
                 
                 if (!data.ciphertext) throw new Error("Ciphertext is missing from JSON.");
 
-                // Decode Base64 directly (much faster, uses half the memory)
                 const ciphertextStr = atob(data.ciphertext);
                 const len = ciphertextStr.length;
+                
+                const ctx = canvas.getContext('2d');
+                const imgData = ctx.createImageData(canvas.width, canvas.height);
 
-                // Paint the bytes onto the canvas as pixels
                 let byteIdx = 0;
                 for (let i = 0; i < imgData.data.length; i += 4) {
                     const val = ciphertextStr.charCodeAt(byteIdx % len);
-                    imgData.data[i] = val;       // Red channel
-                    imgData.data[i+1] = val;     // Green channel
-                    imgData.data[i+2] = val;     // Blue channel
-                    imgData.data[i+3] = 255;     // Alpha (fully opaque)
+                    imgData.data[i] = val;       // Red
+                    imgData.data[i+1] = val;     // Green
+                    imgData.data[i+2] = val;     // Blue
+                    imgData.data[i+3] = 255;     // Alpha
                     byteIdx++;
                 }
                 ctx.putImageData(imgData, 0, 0);
@@ -115,10 +205,9 @@
                 
             } catch (e) {
                 console.error("Static noise error:", e);
-                // If it fails, print the exact error on the screen for easy debugging!
                 loadText.innerText = "Preview error: " + e.message;
             }
-        })();
+        });
     </script>
 </body>
 </html>
