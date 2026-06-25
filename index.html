@@ -82,130 +82,28 @@
 
     <script>
         async function attemptDecryption() {
-            const keyword = document.getElementById('keyword').value.trim().toLowerCase();
-            const errorMessage = document.getElementById('error-message');
-            const resultContainer = document.getElementById('result-container');
-            const destImage = document.getElementById('destination-image');
-            
-            errorMessage.style.display = "none";
-            resultContainer.style.display = "none";
-
-            if (!keyword) return;
-
-            try {
-                // Fetch the treasure map data
-                const response = await fetch('encrypted_data.json');
-                if (!response.ok) throw new Error("Network error fetching data.");
-                const data = await response.json();
-
-                const decodeBase64 = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-                
-                const masterIv = decodeBase64(data.master_iv);
-                const ciphertext = decodeBase64(data.ciphertext);
-
-                // 1. Turn the user's input into raw key material
-                const enc = new TextEncoder();
-                const keyMaterial = await crypto.subtle.importKey(
-                    "raw",
-                    enc.encode(keyword),
-                    "PBKDF2",
-                    false,
-                    ["deriveKey"]
-                );
-
-                let masterKeyBuffer = null;
-
-                // 2. Try the user's password on every "lockbox"
-                for (const box of data.lockboxes) {
-                    const salt = decodeBase64(box.salt);
-                    const iv = decodeBase64(box.iv);
-                    const wrappedKey = decodeBase64(box.wrapped_key);
-
-                    try {
-                        // Derive a test key assuming this box belongs to the user
-                        const testKey = await crypto.subtle.deriveKey(
-                            { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
-                            keyMaterial,
-                            { name: "AES-GCM", length: 256 },
-                            false,
-                            ["decrypt"]
-                        );
-
-                        // Try to unlock this specific box to get the Master Key
-                        masterKeyBuffer = await crypto.subtle.decrypt(
-                            { name: "AES-GCM", iv: iv },
-                            testKey,
-                            wrappedKey
-                        );
-
-                        // If we didn't get an error, the box opened! Stop checking other boxes.
-                        break; 
-                    } catch (e) {
-                        // Wrong password for this box. Silently ignore and loop to the next one.
-                        continue;
-                    }
-                }
-
-                // If the loop finished and masterKeyBuffer is still null, none of the boxes opened.
-                if (!masterKeyBuffer) {
-                    throw new Error("Incorrect password for all teams.");
-                }
-
-                // 3. We successfully extracted the Master Key! Prepare it for use.
-                const masterKey = await crypto.subtle.importKey(
-                    "raw",
-                    masterKeyBuffer,
-                    "AES-GCM",
-                    false,
-                    ["decrypt"]
-                );
-
-                // 4. Decrypt the actual image using the Master Key
-                const decryptedBuffer = await crypto.subtle.decrypt(
-                    { name: "AES-GCM", iv: masterIv },
-                    masterKey,
-                    ciphertext
-                );
-
-                // 5. Display the image
-                const blob = new Blob([decryptedBuffer], { type: data.mime_type });
-                destImage.src = URL.createObjectURL(blob);
-                resultContainer.style.display = "block";
-
-                // Hide the garbled canvas and loading text on success
-                const canvas = document.getElementById('garbled-canvas');
-                if (canvas) canvas.style.display = 'none';
-                const loadText = document.getElementById('loading-text');
-                if (loadText) loadText.style.display = 'none';
-
-            } catch (error) {
-                console.error("Decryption failed:", error);
-                errorMessage.innerText = "Incorrect keyword or missing data. Keep hunting!";
-                errorMessage.style.display = "block";
-            }
-        }
-
-        // Paint the encrypted bytes as "static noise" when the page loads!
-        window.addEventListener('DOMContentLoaded', async () => {
+            (async function paintStatic() {
             const canvas = document.getElementById('garbled-canvas');
+            if (!canvas) return; 
             const ctx = canvas.getContext('2d');
             const imgData = ctx.createImageData(canvas.width, canvas.height);
             const loadText = document.getElementById('loading-text');
 
             try {
                 const response = await fetch('encrypted_data.json');
-                if (!response.ok) throw new Error("File not found");
+                if (!response.ok) throw new Error("Could not find the map file.");
                 const data = await response.json();
                 
-                // Convert Base64 ciphertext into raw bytes
+                if (!data.ciphertext) throw new Error("Ciphertext is missing from JSON.");
+
+                // Decode Base64 directly (much faster, uses half the memory)
                 const ciphertextStr = atob(data.ciphertext);
-                const bytes = new Uint8Array(ciphertextStr.length);
-                for(let i=0; i<ciphertextStr.length; i++) bytes[i] = ciphertextStr.charCodeAt(i);
+                const len = ciphertextStr.length;
 
                 // Paint the bytes onto the canvas as pixels
                 let byteIdx = 0;
                 for (let i = 0; i < imgData.data.length; i += 4) {
-                    const val = bytes[byteIdx % bytes.length];
+                    const val = ciphertextStr.charCodeAt(byteIdx % len);
                     imgData.data[i] = val;       // Red channel
                     imgData.data[i+1] = val;     // Green channel
                     imgData.data[i+2] = val;     // Blue channel
@@ -216,10 +114,11 @@
                 loadText.innerText = "Signal encrypted. Awaiting password...";
                 
             } catch (e) {
-                console.error("Could not load preview:", e);
-                document.getElementById('loading-text').innerText = "Encrypted map missing.";
+                console.error("Static noise error:", e);
+                // If it fails, print the exact error on the screen for easy debugging!
+                loadText.innerText = "Preview error: " + e.message;
             }
-        });
+        })();
     </script>
 </body>
 </html>
