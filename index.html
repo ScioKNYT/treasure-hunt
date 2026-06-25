@@ -65,7 +65,7 @@
     <div class="container">
         <h2>Enter the Secret Word</h2>
         
-        <!-- NEW: The Garbled Image Canvas -->
+        <!-- The Garbled Image Canvas -->
         <canvas id="garbled-canvas" width="300" height="200" style="margin: 1rem auto; border-radius: 4px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); max-width: 100%; display: block;"></canvas>
         <p id="loading-text" style="font-size: 14px; color: #888; margin-bottom: 1rem;">Receiving encrypted signal...</p>
         
@@ -172,7 +172,7 @@
                 destImage.src = URL.createObjectURL(blob);
                 resultContainer.style.display = "block";
 
-                // NEW: Hide the garbled canvas and loading text on success
+                // Hide the garbled canvas and loading text on success
                 const canvas = document.getElementById('garbled-canvas');
                 if (canvas) canvas.style.display = 'none';
                 const loadText = document.getElementById('loading-text');
@@ -180,14 +180,21 @@
 
             } catch (error) {
                 console.error("Decryption failed:", error);
+                errorMessage.innerText = "Incorrect keyword or missing data. Keep hunting!";
                 errorMessage.style.display = "block";
             }
         }
 
-        // NEW: Paint the encrypted bytes as "static noise" when the page loads!
+        // Paint the encrypted bytes as "static noise" when the page loads!
         window.addEventListener('DOMContentLoaded', async () => {
+            const canvas = document.getElementById('garbled-canvas');
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(canvas.width, canvas.height);
+            const loadText = document.getElementById('loading-text');
+
             try {
                 const response = await fetch('encrypted_data.json');
+                if (!response.ok) throw new Error("File not found");
                 const data = await response.json();
                 
                 // Convert Base64 ciphertext into raw bytes
@@ -196,13 +203,8 @@
                 for(let i=0; i<ciphertextStr.length; i++) bytes[i] = ciphertextStr.charCodeAt(i);
 
                 // Paint the bytes onto the canvas as pixels
-                const canvas = document.getElementById('garbled-canvas');
-                const ctx = canvas.getContext('2d');
-                const imgData = ctx.createImageData(canvas.width, canvas.height);
-
                 let byteIdx = 0;
                 for (let i = 0; i < imgData.data.length; i += 4) {
-                    // Turn actual encrypted data into visual static noise
                     const val = bytes[byteIdx % bytes.length];
                     imgData.data[i] = val;       // Red channel
                     imgData.data[i+1] = val;     // Green channel
@@ -211,7 +213,7 @@
                     byteIdx++;
                 }
                 ctx.putImageData(imgData, 0, 0);
-                document.getElementById('loading-text').innerText = "Signal encrypted. Awaiting password...";
+                loadText.innerText = "Signal encrypted. Awaiting password...";
                 
             } catch (e) {
                 console.error("Could not load preview:", e);
