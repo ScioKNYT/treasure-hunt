@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treasure Hunt</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 90%;
+        }
+        input {
+            padding: 10px;
+            width: 80%;
+            margin-bottom: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #004494;
+        }
+        #result-container {
+            margin-top: 2rem;
+            display: none; /* Hidden until the key is correct */
+        }
+        img {
+            max-width: 100%;
+            border-radius: 4px;
+        }
+        .error {
+            color: #d9534f;
+            margin-top: 1rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Enter the Secret Word</h2>
+        <input type="text" id="keyword" placeholder="Type the keyword..." autocomplete="off">
+        <br>
+        <button onclick="attemptDecryption()">Reveal Destination</button>
+        <div id="error-message" class="error">Incorrect keyword or missing data. Keep hunting!</div>
+        
+        <div id="result-container">
+            <h3>You found it!</h3>
+            <img id="destination-image" src="" alt="Hidden Destination">
+        </div>
+    </div>
+
+    <script>
+        // We will add the AES-GCM Web Crypto decryption logic here in the next step!
+        async function attemptDecryption() {
+            const keyword = document.getElementById('keyword').value.trim().toLowerCase();
+            const errorMessage = document.getElementById('error-message');
+            
+            // Placeholder to verify the button works
+            console.log("Attempting decryption with:", keyword);
+            errorMessage.style.display = "block"; 
+        }
+    </script>
+
+</body>
+</html>
